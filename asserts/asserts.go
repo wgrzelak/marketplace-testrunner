@@ -35,26 +35,27 @@ func MessageWithContext(msg string, context string) string {
 
 // DoAssert asserts the value against the rule, returning
 // an empty string if the assertion succeeds, or the error message.
-func DoAssert(value interface{}, rule interface{}) string {
+func DoAssert(value interface{}, rule interface{}, expandCommand func(string) string) string {
 	switch r := rule.(type) {
 	case specs.IntAssert:
-		return doIntAssert(value.(int), r)
+		return doIntAssert(value.(int), r, expandCommand)
 	case *specs.IntAssert:
-		return doIntAssert(value.(int), *r)
+		return doIntAssert(value.(int), *r, expandCommand)
 	case specs.StringAssert:
-		return doStringAssert(value.(string), r)
+		return doStringAssert(value.(string), r, expandCommand)
 	case *specs.StringAssert:
-		return doStringAssert(value.(string), *r)
+		return doStringAssert(value.(string), *r, expandCommand)
 	case specs.TextContentAssert:
-		return doTextContentAssert(value.(string), r)
+		return doTextContentAssert(value.(string), r, expandCommand)
 	case *specs.TextContentAssert:
-		return doTextContentAssert(value.(string), *r)
+		return doTextContentAssert(value.(string), *r, expandCommand)
 	default:
 		panic(fmt.Sprintf("Don't know how to handle rule type, %T", rule))
 	}
 }
 
-func doIntAssert(value int, rule specs.IntAssert) string {
+func doIntAssert(value int, rule specs.IntAssert, expandCommand func(string) string) string {
+	// TODO(wgrzelak): expandCommand should also support int type.
 	if rule.Equals != nil && value != *rule.Equals {
 		return fmt.Sprintf("Should have equaled %d, but was %d", *rule.Equals, value)
 	}
@@ -76,44 +77,44 @@ func doIntAssert(value int, rule specs.IntAssert) string {
 	return ""
 }
 
-func doStringAssert(value string, rule specs.StringAssert) string {
-	if rule.Exactly != nil && value != *rule.Exactly {
-		return fmt.Sprintf("Should have matched exactly:\n%s\n... but was:\n%s", *rule.Exactly, value)
+func doStringAssert(value string, rule specs.StringAssert, expandCommand func(string) string) string {
+	if rule.Exactly != nil && value != expandCommand(*rule.Exactly) {
+		return fmt.Sprintf("Should have matched exactly:\n%s\n... but was:\n%s", expandCommand(*rule.Exactly), value)
 	}
-	if rule.NotContains != nil && strings.Contains(value, *rule.NotContains) {
-		return fmt.Sprintf("Should have not contained:\n%s\n... but was:\n%s", *rule.NotContains, value)
+	if rule.NotContains != nil && strings.Contains(value, expandCommand(*rule.NotContains)) {
+		return fmt.Sprintf("Should have not contained:\n%s\n... but was:\n%s", expandCommand(*rule.NotContains), value)
 	}
 	if rule.Equals != nil {
 		trimmed := strings.TrimSpace(value)
-		if trimmed != *rule.Equals {
-			return fmt.Sprintf("Should have been:\n%s\n... but was:\n%s", *rule.Equals, trimmed)
+		if trimmed != expandCommand(*rule.Equals) {
+			return fmt.Sprintf("Should have been:\n%s\n... but was:\n%s", expandCommand(*rule.Equals), trimmed)
 		}
 	}
-	if rule.Contains != nil && !strings.Contains(value, *rule.Contains) {
-		return fmt.Sprintf("Should have contained:\n%s\n... but was:\n%s", *rule.Contains, value)
+	if rule.Contains != nil && !strings.Contains(value, expandCommand(*rule.Contains)) {
+		return fmt.Sprintf("Should have contained:\n%s\n... but was:\n%s", expandCommand(*rule.Contains), value)
 	}
 	if rule.Matches != nil {
-		r, err := regexp.Compile(*rule.Matches)
+		r, err := regexp.Compile(expandCommand(*rule.Matches))
 		if err != nil {
-			return fmt.Sprintf("Regex failed to compile: %s", *rule.Matches)
+			return fmt.Sprintf("Regex failed to compile: %s", expandCommand(*rule.Matches))
 		}
 		if !r.MatchString(value) {
-			return fmt.Sprintf("Should have matched regex:\n%s\n... but was:\n%s", *rule.Matches, value)
+			return fmt.Sprintf("Should have matched regex:\n%s\n... but was:\n%s", expandCommand(*rule.Matches), value)
 		}
 	}
 	return ""
 }
 
-func doTextContentAssert(value string, rule specs.TextContentAssert) string {
+func doTextContentAssert(value string, rule specs.TextContentAssert, expandCommand func(string) string) string {
 	if rule.Html != nil {
-		if msg := doHtmlAssert(value, *rule.Html); msg != "" {
+		if msg := doHtmlAssert(value, *rule.Html, expandCommand); msg != "" {
 			return MessageWithContext(msg, "Html")
 		}
 	}
 	return ""
 }
 
-func doHtmlAssert(value string, rule specs.HtmlAssert) string {
+func doHtmlAssert(value string, rule specs.HtmlAssert, expandCommand func(string) string) string {
 	// Use net/html to parse first because it can handle some malformed HTML.
 	root, err := html.Parse(strings.NewReader(value))
 	if err != nil {
@@ -134,7 +135,7 @@ func doHtmlAssert(value string, rule specs.HtmlAssert) string {
 		if !ok {
 			return "HTML document contains no title"
 		}
-		if msg := doStringAssert(title, *rule.Title); msg != "" {
+		if msg := doStringAssert(title, *rule.Title, expandCommand); msg != "" {
 			return MessageWithContext(msg, "Title")
 		}
 	}

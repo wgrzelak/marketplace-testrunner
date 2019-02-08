@@ -27,13 +27,14 @@ import (
 )
 
 type CommandExecutor interface {
-	RunTest(test *specs.BashTest) (int, string, string, error)
+	RunTest(test *specs.BashTest, expandCommand func(string) string) (int, string, string, error)
 }
 
 type RealExecutor struct{}
 
-func (e *RealExecutor) RunTest(test *specs.BashTest) (int, string, string, error) {
-	cmd := exec.Command("bash", "-c", test.Script)
+func (e *RealExecutor) RunTest(test *specs.BashTest, expandCommand func(string) string) (int, string, string, error) {
+	// TODO(wgrzelak): Decide whatever bash script should be expanded.
+	cmd := exec.Command("bash", "-c", expandCommand(test.Script))
 	err, stdout, stderr := e.executeProcess(cmd)
 	var exitErr *exec.ExitError
 	if err != nil {
@@ -73,33 +74,33 @@ func (e *RealExecutor) transformExitErrorToCode(exitErr *exec.ExitError) (int, e
 
 // RunBashTest executes a BashTest rule, returning an empty string if
 // the test passes, otherwise the error message.
-func RunBashTest(test *specs.BashTest, executor CommandExecutor) string {
-	status, stdout, stderr, err := executor.RunTest(test)
+func RunBashTest(test *specs.BashTest, executor CommandExecutor, expandCommand func(string) string) string {
+	status, stdout, stderr, err := executor.RunTest(test, expandCommand)
 	if err != nil {
 		return asserts.MessageWithContext(fmt.Sprintf("%v", err), "Failed to execute bash script")
 	}
-	return validateResult(status, stdout, stderr, test)
+	return validateResult(status, stdout, stderr, test, expandCommand)
 }
 
-func validateResult(status int, stdout, stderr string, test *specs.BashTest) string {
+func validateResult(status int, stdout, stderr string, test *specs.BashTest, expandCommand func(string) string) string {
 	if test.Expect == nil {
 		return ""
 	}
-	if msg := validateErrorCode(status, test.Expect.ExitCode); msg != "" {
+	if msg := validateErrorCode(status, test.Expect.ExitCode, expandCommand); msg != "" {
 		return asserts.MessageWithContext(msg, "Unexpected exit status code")
 	}
-	if msg := validateBufferedOutput(stdout, test.Expect.Stdout); msg != "" {
+	if msg := validateBufferedOutput(stdout, test.Expect.Stdout, expandCommand); msg != "" {
 		return asserts.MessageWithContext(msg, "Unexpected standard output stream")
 	}
-	if msg := validateBufferedOutput(stdout, test.Expect.Stdout); msg != "" {
+	if msg := validateBufferedOutput(stdout, test.Expect.Stdout, expandCommand); msg != "" {
 		return asserts.MessageWithContext(msg, "Unexpected standard error stream")
 	}
 	return ""
 }
 
-func validateErrorCode(status int, expect *specs.IntAssert) string {
+func validateErrorCode(status int, expect *specs.IntAssert, expandCommand func(string) string) string {
 	if expect != nil {
-		result := asserts.DoAssert(status, expect)
+		result := asserts.DoAssert(status, expect, expandCommand)
 		if result != "" {
 			return result
 		}
@@ -107,9 +108,9 @@ func validateErrorCode(status int, expect *specs.IntAssert) string {
 	return ""
 }
 
-func validateBufferedOutput(out string, expect *specs.StringAssert) string {
+func validateBufferedOutput(out string, expect *specs.StringAssert, expandCommand func(string) string) string {
 	if expect != nil {
-		result := asserts.DoAssert(out, expect)
+		result := asserts.DoAssert(out, expect, expandCommand)
 		if result != "" {
 			return result
 		}

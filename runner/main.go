@@ -33,6 +33,8 @@ const outcomeFailed = "FAILED"
 const outcomePassed = "PASSED"
 const outcomeSkipped = "SKIPPED"
 
+var vars = flags.FlagStringMap("vars", "Variable substitutions")
+
 type testResult struct {
 	Name    string
 	Message string
@@ -60,6 +62,13 @@ func (r *testResult) Skip(msg string) {
 
 func (t testStatus) FailuresSoFarCount() int {
 	return t.FailureCount
+}
+
+func expandCommand(name string) string {
+	mapping := func(key string) string {
+		return (*vars)[key]
+	}
+	return os.Expand(name, mapping)
 }
 
 func main() {
@@ -135,7 +144,7 @@ func doOneAction(index int, action *specs.Action, status *testStatus, results []
 	defer recordResult(&result)
 
 	if action.Condition != nil {
-		ok, msg := conditions.Evaluate(action.Condition, status)
+		ok, msg := conditions.Evaluate(action.Condition, status, expandCommand)
 		if !ok {
 			result.Skip(msg)
 			return
@@ -143,7 +152,7 @@ func doOneAction(index int, action *specs.Action, status *testStatus, results []
 	}
 
 	if action.HttpTest != nil {
-		msg := tests.RunHttpTest(action.HttpTest, &http.Client{})
+		msg := tests.RunHttpTest(action.HttpTest, &http.Client{}, expandCommand)
 		if len(msg) > 0 {
 			result.Fail("HTTP test failed", msg)
 			return
@@ -155,7 +164,7 @@ func doOneAction(index int, action *specs.Action, status *testStatus, results []
 			return
 		}
 	} else if action.BashTest != nil {
-		msg := tests.RunBashTest(action.BashTest, &tests.RealExecutor{})
+		msg := tests.RunBashTest(action.BashTest, &tests.RealExecutor{}, expandCommand)
 		if len(msg) > 0 {
 			result.Fail("Bash test failed", msg)
 			return

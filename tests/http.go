@@ -26,36 +26,37 @@ import (
 
 // RunHttpTest executes an HttpTest rule, returning an empty string if
 // the test passes, otherwise the error message.
-func RunHttpTest(test *specs.HttpTest, client *http.Client) string {
+func RunHttpTest(test *specs.HttpTest, client *http.Client, expandCommand func(string) string) string {
 	if msg := validate(test); msg != "" {
 		return asserts.MessageWithContext(msg, "Malformed HttpTest")
 	}
 	method := http.MethodGet
 	if test.Method != nil {
-		method = *test.Method
+		method = expandCommand(*test.Method)
 	}
-	req, err := http.NewRequest(method, test.Url, nil)
+	req, err := http.NewRequest(method, expandCommand(test.Url), nil)
 	if err != nil {
 		return fmt.Sprintf("HTTP request creation error: %v", err)
 	}
 	for k, v := range test.Headers {
-		req.Header.Add(k, v)
+		req.Header.Add(k, expandCommand(v))
 	}
+
 	res, err := client.Do(req)
 	if err != nil {
 		return fmt.Sprintf("HTTP request error: %v", err)
 	}
-	return doExpect(&test.Expect, res)
+	return doExpect(&test.Expect, res, expandCommand)
 }
 
-func doExpect(expect *specs.HttpExpect, response *http.Response) string {
+func doExpect(expect *specs.HttpExpect, response *http.Response, expandCommand func(string) string) string {
 	if expect.StatusCode != nil {
-		if msg := asserts.DoAssert(response.StatusCode, expect.StatusCode); msg != "" {
+		if msg := asserts.DoAssert(response.StatusCode, expect.StatusCode, expandCommand); msg != "" {
 			return asserts.MessageWithContext(msg, "Unexpected response status code")
 		}
 	}
 	if expect.StatusText != nil {
-		if msg := asserts.DoAssert(response.Status, expect.StatusText); msg != "" {
+		if msg := asserts.DoAssert(response.Status, expect.StatusText, expandCommand); msg != "" {
 			return asserts.MessageWithContext(msg, "Unexpected response status text")
 		}
 	}
@@ -64,7 +65,7 @@ func doExpect(expect *specs.HttpExpect, response *http.Response) string {
 		if err != nil {
 			return "Unexpected error reading the body"
 		}
-		if msg := asserts.DoAssert(string(body), expect.BodyText); msg != "" {
+		if msg := asserts.DoAssert(string(body), expect.BodyText, expandCommand); msg != "" {
 			return asserts.MessageWithContext(msg, "Unexpected body text content")
 		}
 	}

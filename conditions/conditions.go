@@ -25,9 +25,9 @@ type TestStatus interface {
 
 // Evaluate evaluates if a condition is true for the current test status.
 // If the condition evaluates to false, the second return contains the reason.
-func Evaluate(condition *specs.Condition, testStatus TestStatus) (bool, string) {
+func Evaluate(condition *specs.Condition, testStatus TestStatus, expandCommand func(string) string) (bool, string) {
 	if condition.FailuresSoFar != nil {
-		if msg := asserts.DoAssert(testStatus.FailuresSoFarCount(), condition.FailuresSoFar); msg != "" {
+		if msg := asserts.DoAssert(testStatus.FailuresSoFarCount(), condition.FailuresSoFar, expandCommand); msg != "" {
 			return false, asserts.MessageWithContext(msg, "Count of failures so far")
 		}
 	}
